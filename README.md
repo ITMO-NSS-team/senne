@@ -1,3 +1,3 @@
-<img src="./docs/images/senne.png" width="700"/>
+<img src="./docs/images/senne.png" width="550"/>
 
-Algorithm for spatial segmentation neural networks ensembling
+Algorithm for spatial segmentation neural networks ensembling. 
