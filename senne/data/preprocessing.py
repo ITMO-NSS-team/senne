@@ -10,3 +10,17 @@ class RemoteSensingPreprocessor:
     def smooth(self):
         """ Apply gaussian smoothing for images """
         raise NotImplementedError()
+
+
+class ImagePreprocessor:
+    """
+    Class for preparing images using augmentation methods and other classical
+    algorithms for image processing
+    """
+
+    def __init__(self):
+        pass
+
+    def smooth(self):
+        """ Apply gaussian smoothing for images """
+        raise NotImplementedError()
