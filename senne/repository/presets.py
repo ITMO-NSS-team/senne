@@ -1,42 +1,47 @@
+from copy import deepcopy
 from typing import List
 
 import segmentation_models_pytorch as smp
 import torch
 
 
-default_params = {'lr': 0.0001, 'classes': 1, 'in_channels': 4,
+default_params = {'network': smp.Unet, 'lr': 0.0001, 'classes': 1, 'in_channels': 4,
                   'activation': 'sigmoid', 'loss': smp.utils.losses.DiceLoss(),
-                  'device': 'cuda', 'epochs': 10}
+                  'device': 'cuda', 'epochs': 10, 'batch_size': 3,
+                  'encoder_weights': 'imagenet', 'encoder_name': 'resnet18'}
 
 
-def create_two_simple_networks(**params):
-    """ Initialise two neural networks for image segmentation """
+def create_two_simple_networks(**params) -> List[dict]:
+    """ Initialise parameters for two neural networks for image segmentation """
+    first_params = {'lr': 0.001, 'loss': smp.utils.losses.DiceLoss(),
+                    'epochs': 10, 'encoder_weights': 'imagenet'}
+    first_params = _update_parameters(first_params)
 
-    return None
+    second_params = {'lr': 0.0001, 'loss': smp.utils.losses.JaccardLoss(),
+                     'epochs': 20, 'encoder_weights': 'imagenet'}
+    second_params = _update_parameters(second_params)
+    return [first_params, second_params]
 
 
-def create_three_simple_networks(**params):
+def create_three_simple_networks(**params) -> List[dict]:
     raise NotImplementedError()
 
 
-def create_four_simple_networks(**params):
+def create_four_simple_networks(**params) -> List[dict]:
     raise NotImplementedError()
 
 
-def create_two_advanced_networks(**params):
+def create_two_advanced_networks(**params) -> List[dict]:
     raise NotImplementedError()
 
 
-def _create_segmentation_net(params: dict):
+def segmentation_net_builder(params: dict):
     """ Create neural network with desired parameters """
-    if params is None:
-        params = {**params, **default_params}
-
-    nn_model = smp.PAN(encoder_name=params['encoder_name'],
-                       encoder_weights=params['encoder_weights'],
-                       in_channels=params['in_channels'],
-                       classes=params['classes'],
-                       activation=params['activation'])
+    nn_model = params['network'](encoder_name=params['encoder_name'],
+                                 encoder_weights=params['encoder_weights'],
+                                 in_channels=params['in_channels'],
+                                 classes=params['classes'],
+                                 activation=params['activation'])
     optimizer = torch.optim.Adam(params=nn_model.parameters(), lr=params['lr'])
     metrics = [smp.utils.metrics.IoU(threshold=0.5)]
 
@@ -51,4 +56,13 @@ def _create_segmentation_net(params: dict):
                                              device=params['device'],
                                              verbose=True)
 
-    return train_epoch, valid_epoch
+    return train_epoch, valid_epoch, nn_model
+
+
+def _update_parameters(custom_dictionary: dict):
+    obtained_parameters = deepcopy(default_params)
+    for parameter in list(obtained_parameters.keys()):
+        if custom_dictionary.get(parameter) is not None:
+            obtained_parameters[parameter] = custom_dictionary.get(parameter)
+
+    return obtained_parameters

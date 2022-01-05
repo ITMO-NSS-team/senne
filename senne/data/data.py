@@ -82,29 +82,6 @@ class SenneDataLoader:
         return all_features_matrices, all_target_matrices
 
     @staticmethod
-    def train_test(x_train: torch.tensor, y_train: torch.tensor,
-                   train_size: float = 0.8):
-        """ Method for train test split
-
-        :param x_train: pytorch tensor with features
-        :param y_train: pytorch tensor with labels
-        :param train_size: value from 0.1 to 0.9
-        """
-        if train_size < 0.1 or train_size > 0.99:
-            raise ValueError('train_size value must be value between 0.1 and 0.99')
-        dataset = data_utils.TensorDataset(x_train, y_train)
-        train_ratio = round(len(dataset) * train_size)
-        test_ratio = len(dataset) - train_ratio
-        train, test = torch.utils.data.random_split(dataset,
-                                                    [train_ratio, test_ratio])
-
-        train_features, train_target = train.dataset[train.indices]
-        test_features, test_target = test.dataset[test.indices]
-        train_dataset = data_utils.TensorDataset(train_features, train_target)
-        test_dataset = data_utils.TensorDataset(test_features, test_target)
-        return train_dataset, test_dataset
-
-    @staticmethod
     def _read_geotiff_file(area_path: str) -> np.array:
         """ Read and convert geotiff file as numpy array """
         bands_tiff = os.listdir(area_path)
@@ -164,3 +141,26 @@ def create_matrix_plot(features_array: np.array, label_matrix: np.array):
 
     plt.tight_layout()
     plt.show()
+
+
+def train_test(x_train: torch.tensor, y_train: torch.tensor,
+               train_size: float = 0.8):
+    """ Method for train test split
+
+    :param x_train: pytorch tensor with features
+    :param y_train: pytorch tensor with labels
+    :param train_size: value from 0.1 to 0.9
+    """
+    if train_size < 0.1 or train_size > 0.99:
+        raise ValueError('train_size value must be value between 0.1 and 0.99')
+    dataset = data_utils.TensorDataset(x_train, y_train)
+    train_ratio = round(len(dataset) * train_size)
+    test_ratio = len(dataset) - train_ratio
+    train, test = torch.utils.data.random_split(dataset,
+                                                [train_ratio, test_ratio])
+
+    train_features, train_target = train.dataset[train.indices]
+    test_features, test_target = test.dataset[test.indices]
+    train_dataset = data_utils.TensorDataset(train_features, train_target)
+    test_dataset = data_utils.TensorDataset(test_features, test_target)
+    return train_dataset, test_dataset
