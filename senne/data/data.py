@@ -143,17 +143,17 @@ def create_matrix_plot(features_array: np.array, label_matrix: np.array):
     plt.show()
 
 
-def train_test(x_train: torch.tensor, y_train: torch.tensor,
-               train_size: float = 0.8):
-    """ Method for train test split
+def train_test_torch(features: torch.tensor, target: torch.tensor,
+                     train_size: float = 0.8):
+    """ Method for train test split for PyTorch tensors
 
-    :param x_train: pytorch tensor with features
-    :param y_train: pytorch tensor with labels
-    :param train_size: value from 0.1 to 0.9
+    :param features: pytorch tensor with features
+    :param target: pytorch tensor with labels
+    :param train_size: value from 0.1 to 0.99
     """
     if train_size < 0.1 or train_size > 0.99:
         raise ValueError('train_size value must be value between 0.1 and 0.99')
-    dataset = data_utils.TensorDataset(x_train, y_train)
+    dataset = data_utils.TensorDataset(features, target)
     train_ratio = round(len(dataset) * train_size)
     test_ratio = len(dataset) - train_ratio
     train, test = torch.utils.data.random_split(dataset,
@@ -164,3 +164,30 @@ def train_test(x_train: torch.tensor, y_train: torch.tensor,
     train_dataset = data_utils.TensorDataset(train_features, train_target)
     test_dataset = data_utils.TensorDataset(test_features, test_target)
     return train_dataset, test_dataset
+
+
+def train_test_numpy(features: np.array, target: np.array,
+                     train_size: float = 0.8):
+    """ Method for train test split for numpy arrays
+
+    :param features: numpy array with features
+    :param target: numpy array with labels
+    :param train_size: value from 0.1 to 0.99
+    """
+    if train_size < 0.1 or train_size > 0.99:
+        raise ValueError('train_size value must be value between 0.1 and 0.99')
+
+    train_ratio = round(len(features) * train_size)
+    indices = np.arange(0, len(features))
+    np.random.shuffle(indices)
+
+    train_ids = indices[: train_ratio]
+    test_ids = indices[train_ratio:]
+
+    train_features = features[train_ids, :, :, :]
+    test_features = features[test_ids, :, :, :]
+
+    train_target = target[train_ids, :, :]
+    test_target = target[test_ids, :, :]
+
+    return train_features, test_features, train_target, test_target

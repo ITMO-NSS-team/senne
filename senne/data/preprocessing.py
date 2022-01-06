@@ -44,3 +44,17 @@ def normalize(features_tensor: np.array, target_tensor: np.array):
         band_boundaries.update({band_id: {'min': min_value, 'max': max_value}})
 
     return features_tensor, target_tensor, band_boundaries
+
+
+def apply_normalization(features_tensor: np.array, preprocessing_info: dict):
+    """ Perform normalization procedure for new unseen data """
+    n_objects, n_bands, n_rows, n_columns = features_tensor.shape
+
+    for band_id in range(n_bands):
+        band_tensor = features_tensor[:, band_id, :, :]
+        min_value = preprocessing_info['info'][str(band_id)]['min']
+        max_value = preprocessing_info['info'][str(band_id)]['max']
+
+        features_tensor[:, band_id, :, :] = cv.normalize(band_tensor, min_value, max_value)
+
+    return features_tensor
