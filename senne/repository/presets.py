@@ -14,11 +14,11 @@ default_params = {'network': smp.Unet, 'lr': 0.0001, 'classes': 1, 'in_channels'
 def create_two_simple_networks(**params) -> List[dict]:
     """ Initialise parameters for two neural networks for image segmentation """
     first_params = {'lr': 0.001, 'loss': smp.utils.losses.DiceLoss(),
-                    'epochs': 10, 'encoder_weights': 'imagenet'}
+                    'epochs': 50, 'encoder_weights': 'imagenet'}
     first_params = _update_parameters(first_params)
 
     second_params = {'lr': 0.0001, 'loss': smp.utils.losses.JaccardLoss(),
-                     'epochs': 20, 'encoder_weights': 'imagenet'}
+                     'epochs': 80, 'encoder_weights': 'imagenet'}
     second_params = _update_parameters(second_params)
     return [first_params, second_params]
 

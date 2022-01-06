@@ -7,6 +7,6 @@ if __name__ == '__main__':
 
     # Create an ensemble
     ensembler.prepare_composite_model(data_paths={'features_path': '../data_simple/train_features',
-                                                'target_path': '../data_simple/train_labels'},
+                                                  'target_path': '../data_simple/train_labels'},
                                       final_model='automl',
                                       sampling_ratio=0.001)

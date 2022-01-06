@@ -4,6 +4,8 @@ import os
 import pandas as pd
 import numpy as np
 import torch.utils.data as data_utils
+from fedot.api.main import Fedot
+from sklearn.metrics import classification_report
 
 from senne.data.data import SenneDataLoader, train_test_torch, train_test_numpy
 from senne.data.preprocessing import normalize, apply_normalization
@@ -142,7 +144,7 @@ class Ensembler:
         # Save information about preprocessing transformations
         json_path = os.path.join(self.path, 'preprocessing.json')
         with open(json_path, 'w') as f:
-            json.dumps(preprocessing_information, f)
+            json.dump(preprocessing_information, f)
 
     def prepare_composite_model(self, data_paths: dict, final_model: str, sampling_ratio: float = 0.01):
         """ Start creating composite ensemble with several neural networks
@@ -150,8 +152,8 @@ class Ensembler:
         :param data_paths: dictionary with paths to features matrices and target ones
         :param final_model: which model to use for ensembling.
         Available parameters:
-            * ridge - ridge model (in progress)
-            * lasso - lasso regression (in progress)
+            * logit - logistic regression (in progress)
+            * dt - decision tree classification (in progress)
             * automl - launch FEDOT framework as core
         :param sampling_ratio: which ratio of training sample need to use for training
         """
@@ -159,11 +161,35 @@ class Ensembler:
         self.data_loader = SenneDataLoader(features_path=data_paths['features_path'],
                                            target_path=data_paths['target_path'])
         train_df, test_df = self.collect_predictions_from_networks()
-
+        features_column = train_df.columns[:-1]
         if final_model == 'automl':
             # Launch FEDOT framework
-            print(train_df.shape)
-            print(train_df)
+            senne_logger.info('Launch AutoML algorithm')
+
+            # task selection, initialisation of the framework
+            automl_model = Fedot(problem='classification', timeout=10)
+
+            # Define parameters and start optimization
+
+            pipeline = automl_model.fit(features=np.array(train_df[features_column]),
+                                        target=np.array(train_df['target']),
+                                        predefined_model='logit')
+
+            #################
+            # Save pipeline #
+            #################
+            pipeline.save(path=os.path.join(self.path, 'final_model'))
+            folders = os.listdir(self.path)
+            for folder in folders:
+                if folder.endswith('final_model'):
+                    # Folder need to be renamed
+                    old_name = os.path.join(self.path, folder)
+                    new_name = os.path.join(self.path, 'final_model')
+                    os.rename(old_name, new_name)
+
+            # Display validation metrics
+            predictions = automl_model.predict(np.array(test_df[features_column]))
+            print(classification_report(test_df['target'], predictions))
 
     def collect_predictions_from_networks(self):
         """ Apply already fitted preprocessing """
@@ -195,7 +221,7 @@ class Ensembler:
             if model_id == number_of_models - 1:
                 # Use row and column id as additional predictions
                 train_df['row_ids'], train_df['col_ids'] = create_row_column_features(train_predictions,
-                                                            sampling_ids=self.sampling_ids)
+                                                                                      sampling_ids=self.sampling_ids)
                 test_df['row_ids'], test_df['col_ids'] = create_row_column_features(test_predictions)
 
                 # Add target columns
@@ -203,6 +229,8 @@ class Ensembler:
                 train_df['target'] = train_target[self.sampling_ids]
 
                 test_df['target'] = np.ravel(test_dataset.tensors[1].cpu().numpy())
+
+        senne_logger.info(f'Training sample size {len(train_df)}')
         return train_df, test_df
 
     @staticmethod

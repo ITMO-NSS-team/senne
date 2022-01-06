@@ -49,23 +49,27 @@ class SenneDataLoader:
         for current_area in area_folders:
             senne_logger.info(f'Processing area {current_area}')
 
-            # In area folder there are several geotiff files
-            area_path = os.path.join(self.features_path, current_area)
-            features_array = self._read_geotiff_file(area_path)
+            try:
+                # In area folder there are several geotiff files
+                area_path = os.path.join(self.features_path, current_area)
+                features_array = self._read_geotiff_file(area_path)
+                # Update all features
+                all_features_matrices.append(features_array)
 
-            # Read array with labels
-            tiff_label_name = ''.join((current_area, '.tif'))
-            opened_label_tiff = GeoTiff(
-                os.path.join(self.target_path, tiff_label_name))
-            label_matrix = np.array(opened_label_tiff.read())
-
-            # Update all features
-            all_features_matrices.append(features_array)
-            all_target_matrices.append(label_matrix)
+                if self.target_path is not None:
+                    # Read array with labels
+                    tiff_label_name = ''.join((current_area, '.tif'))
+                    opened_label_tiff = GeoTiff(os.path.join(self.target_path, tiff_label_name))
+                    label_matrix = np.array(opened_label_tiff.read())
+                    all_target_matrices.append(label_matrix)
+            except FileNotFoundError as ex:
+                senne_logger.info(f'{ex.__str__()}')
+                pass
 
         # Convert into pt tensors
         all_features_matrices = np.array(all_features_matrices, dtype='float32')
-        all_target_matrices = np.array(all_target_matrices, dtype='float32')
+        if self.target_path is not None:
+            all_target_matrices = np.array(all_target_matrices, dtype='float32')
 
         return all_features_matrices, all_target_matrices
 
@@ -77,7 +81,8 @@ class SenneDataLoader:
         all_features_matrices, all_target_matrices = self.get_numpy_arrays()
         # Convert numpy arrays into torch tensors
         all_features_matrices = torch.from_numpy(all_features_matrices)
-        all_target_matrices = torch.from_numpy(all_target_matrices)
+        if self.target_path is not None:
+            all_target_matrices = torch.from_numpy(all_target_matrices)
 
         return all_features_matrices, all_target_matrices
 
