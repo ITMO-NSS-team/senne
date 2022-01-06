@@ -27,7 +27,7 @@ class SenneDataLoader:
 
             # In area folder there are several geotiff files
             area_path = os.path.join(self.features_path, current_area)
-            features_array = self._read_geotiff_file(area_path)
+            features_array = self.read_geotiff_file(area_path)
 
             # Read array with labels
             tiff_label_name = ''.join((current_area, '.tif'))
@@ -52,7 +52,7 @@ class SenneDataLoader:
             try:
                 # In area folder there are several geotiff files
                 area_path = os.path.join(self.features_path, current_area)
-                features_array = self._read_geotiff_file(area_path)
+                features_array = self.read_geotiff_file(area_path)
                 # Update all features
                 all_features_matrices.append(features_array)
 
@@ -87,7 +87,7 @@ class SenneDataLoader:
         return all_features_matrices, all_target_matrices
 
     @staticmethod
-    def _read_geotiff_file(area_path: str) -> np.array:
+    def read_geotiff_file(area_path: str) -> np.array:
         """ Read and convert geotiff file as numpy array """
         bands_tiff = os.listdir(area_path)
         bands_tiff.sort()
