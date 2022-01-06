@@ -6,4 +6,4 @@ if __name__ == '__main__':
                                     serialized_path='example_folder',
                                     device='cuda')
 
-    predict_creator.make_prediction(vis=True)
+    predict_creator.make_prediction(vis=True, take_first_images=10)

@@ -15,7 +15,6 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from senne.data.data import SenneDataLoader
 from senne.data.preprocessing import apply_normalization
-from senne.log import senne_logger
 
 
 class MatrixPredict:
@@ -37,7 +36,7 @@ class MatrixPredict:
         self.expected_n_cols = None
         self.expected_n_objects = 0
 
-    def make_prediction(self, vis: bool = False):
+    def make_prediction(self, vis: bool = False, take_first_images: int = None):
         """ Make predictions for matrices placed on desired path """
         if vis and self.data_paths.get('target_path') is None:
             raise ValueError(f'For visualisation actual target needed!')
@@ -61,7 +60,9 @@ class MatrixPredict:
         if self.data_paths.get('target_path') is not None:
             features_df.update({'target': []})
 
-        for file_id, geotiff_file in enumerate(geotiff_files[:2]):
+        if take_first_images is not None:
+            geotiff_files = geotiff_files[: take_first_images]
+        for file_id, geotiff_file in enumerate(geotiff_files):
             ################################
             # Load source geotiff matrices #
             ################################

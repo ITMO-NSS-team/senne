@@ -61,7 +61,7 @@ class SenneDataLoader:
                     tiff_label_name = ''.join((current_area, '.tif'))
                     opened_label_tiff = GeoTiff(os.path.join(self.target_path, tiff_label_name))
                     label_matrix = np.array(opened_label_tiff.read())
-                    all_target_matrices.append(label_matrix)
+                    all_target_matrices.append(np.expand_dims(label_matrix, 0))
             except FileNotFoundError as ex:
                 senne_logger.info(f'{ex.__str__()}')
                 pass
@@ -192,7 +192,7 @@ def train_test_numpy(features: np.array, target: np.array,
     train_features = features[train_ids, :, :, :]
     test_features = features[test_ids, :, :, :]
 
-    train_target = target[train_ids, :, :]
-    test_target = target[test_ids, :, :]
+    train_target = target[train_ids, :, :, :]
+    test_target = target[test_ids, :, :, :]
 
     return train_features, test_features, train_target, test_target

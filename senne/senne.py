@@ -170,7 +170,6 @@ class Ensembler:
             automl_model = Fedot(problem='classification', timeout=10)
 
             # Define parameters and start optimization
-
             pipeline = automl_model.fit(features=np.array(train_df[features_column]),
                                         target=np.array(train_df['target']),
                                         predefined_model='logit')

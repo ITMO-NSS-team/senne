@@ -6,19 +6,29 @@ import torch
 
 
 default_params = {'network': smp.Unet, 'lr': 0.0001, 'classes': 1, 'in_channels': 4,
-                  'activation': 'sigmoid', 'loss': smp.utils.losses.DiceLoss(),
+                  'activation': 'sigmoid', 'loss': smp.utils.losses.DiceLoss(eps=1.),
                   'device': 'cuda', 'epochs': 10, 'batch_size': 3,
                   'encoder_weights': 'imagenet', 'encoder_name': 'resnet18'}
 
 
 def create_two_simple_networks(**params) -> List[dict]:
     """ Initialise parameters for two neural networks for image segmentation """
-    first_params = {'lr': 0.001, 'loss': smp.utils.losses.DiceLoss(),
-                    'epochs': 50, 'encoder_weights': 'imagenet'}
+    first_params = {'network': smp.Unet,
+                    'lr': 0.0001,
+                    'loss': smp.utils.losses.DiceLoss(),
+                    'epochs': 3,
+                    'encoder_name': 'resnet18',
+                    'encoder_weights': 'imagenet',
+                    'activation': 'sigmoid'}
     first_params = _update_parameters(first_params)
 
-    second_params = {'lr': 0.0001, 'loss': smp.utils.losses.JaccardLoss(),
-                     'epochs': 80, 'encoder_weights': 'imagenet'}
+    second_params = {'network': smp.MAnet,
+                     'lr': 0.0001,
+                     'loss': smp.utils.losses.JaccardLoss(),
+                     'epochs': 3,
+                     'encoder_name': 'resnet18',
+                     'encoder_weights': 'swsl',
+                     'activation': 'sigmoid'}
     second_params = _update_parameters(second_params)
     return [first_params, second_params]
 
