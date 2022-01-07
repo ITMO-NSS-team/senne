@@ -1,20 +1,19 @@
 import json
 import os
+import pickle
+from copy import copy
 
 import pandas as pd
 import numpy as np
 
 import matplotlib.pyplot as plt
 import torch
-from fedot.core.data.data import InputData
-from fedot.core.pipelines.pipeline import Pipeline
-from fedot.core.repository.dataset_types import DataTypesEnum
-from fedot.core.repository.tasks import Task, TaskTypesEnum
 from geotiff import GeoTiff
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from senne.data.data import SenneDataLoader
 from senne.data.preprocessing import apply_normalization
+from tifffile import imsave
 
 
 class MatrixPredict:
@@ -24,10 +23,12 @@ class MatrixPredict:
     iteratively on each tile
     """
 
-    def __init__(self, data_paths: dict, serialized_path: str, device: str = 'cuda'):
+    def __init__(self, data_paths: dict, serialized_path: str, device: str = 'cuda',
+                 final_model: str = 'logit'):
         self.data_paths = data_paths
         self.serialized_path = os.path.abspath(serialized_path)
         self.device = device
+        self.final_model = final_model
 
         # Target path may be defined as None
         self.data_loader = SenneDataLoader(features_path=data_paths['features_path'],
@@ -36,10 +37,20 @@ class MatrixPredict:
         self.expected_n_cols = None
         self.expected_n_objects = 0
 
-    def make_prediction(self, vis: bool = False, take_first_images: int = None):
-        """ Make predictions for matrices placed on desired path """
+    def make_prediction(self, save_folder: str, vis: bool = False, take_first_images: int = None):
+        """ Make predictions for matrices placed on desired path
+
+        :param save_folder: path to the folder where to save geotiff files
+        :param vis: is there a need to make visualizations
+        :param take_first_images: how many images needed to be processed
+        """
         if vis and self.data_paths.get('target_path') is None:
             raise ValueError(f'For visualisation actual target needed!')
+
+        # Create folder
+        save_folder = os.path.abspath(save_folder)
+        if os.path.isdir(save_folder) is False:
+            os.makedirs(save_folder)
 
         preprocess_json = os.path.join(self.serialized_path, 'preprocessing.json')
         with open(preprocess_json) as json_file:
@@ -53,15 +64,10 @@ class MatrixPredict:
 
         # Find all files (areas) to process
         geotiff_files = os.listdir(self.data_paths['features_path'])
-        # Initialize final report dictionary
-        features_df = {'row_ids': [], 'col_ids': []}
-        for network_name in networks:
-            features_df.update({network_name: []})
-        if self.data_paths.get('target_path') is not None:
-            features_df.update({'target': []})
 
         if take_first_images is not None:
             geotiff_files = geotiff_files[: take_first_images]
+
         for file_id, geotiff_file in enumerate(geotiff_files):
             ################################
             # Load source geotiff matrices #
@@ -84,7 +90,8 @@ class MatrixPredict:
                 # Pass this iteration
                 continue
 
-            # Make predictions using each neural network sequentially
+            # Initialize final report dictionary
+            features_df = {}
             self.expected_n_objects += 1
             for i, network_name in enumerate(networks):
                 features_copied = np.copy(features_tensor)
@@ -99,33 +106,47 @@ class MatrixPredict:
                 pr_mask = pr_mask.squeeze().cpu().numpy()
 
                 # Update information about predictions
-                one_dim_features = features_df[network_name]
-                one_dim_features.extend(list(np.ravel(pr_mask)))
+                features_df[network_name] = np.ravel(pr_mask)
 
                 if i == len(networks) - 1:
                     # Last neural network give prediction
                     all_rows, all_cols = create_row_column_features_for_predict(pr_mask)
-                    row_ids = features_df['row_ids']
-                    row_ids.extend(list(all_rows))
-
-                    col_ids = features_df['col_ids']
-                    col_ids.extend(list(all_cols))
+                    features_df['row_ids'] = all_rows
+                    features_df['col_ids'] = all_cols
 
                     if target_matrix is not None:
-                        one_dim_target = features_df['target']
-                        one_dim_target.extend(list(np.ravel(target_matrix)))
+                        features_df['target'] = np.ravel(target_matrix)
 
                 if file_id == 0:
                     self.expected_n_rows, self.expected_n_cols = pr_mask.shape
 
-        features_df = pd.DataFrame(features_df)
-        # Use pipeline to ensemble forecast
-        predicted = self.pipeline_predict(features_df, network_names=networks)
+            features_df = pd.DataFrame(features_df)
+            if self.final_model == 'automl':
+                # Use pipeline to ensemble forecast
+                predicted = self.pipeline_predict(features_df, network_names=copy(networks))
+            else:
+                predicted = self.final_model_predict(features_df, network_names=copy(networks))
 
-        predicted_matrices = self.transform_one_dim_into_matrices(predicted)
-        if vis:
-            self.display_predictions(predicted, features_df)
-        return predicted_matrices
+            predicted_matrix = self.transform_one_dim_into_matrices(predicted)
+
+            # Save matrix as geotiff file
+            file_path = os.path.join(save_folder, ''.join((geotiff_file, '.tif')))
+            imsave(file_path, np.array(predicted_matrix, dtype="uint8"))
+
+            if vis:
+                self.display_predictions(predicted, features_df)
+
+    def final_model_predict(self, features_df, network_names):
+        network_names.sort()
+        network_names.extend(['row_ids', 'col_ids'])
+
+        # Search for pkl file
+        path = os.path.join(self.serialized_path, 'final_model.pkl')
+        with open(path, "rb") as f:
+            final_model = pickle.load(f)
+
+        labels_output = final_model.predict(np.array(features_df[network_names]))
+        return labels_output
 
     def pipeline_predict(self, features_df, network_names):
         """
@@ -135,6 +156,8 @@ class MatrixPredict:
         :param network_names: list with names of CNN models
         :return: labels from the final model
         """
+        from fedot.core.pipelines.pipeline import Pipeline
+
         network_names.sort()
         network_names.extend(['row_ids', 'col_ids'])
 
@@ -151,51 +174,50 @@ class MatrixPredict:
 
     def transform_one_dim_into_matrices(self, prediction: np.array):
         """ Transform one-dimensional prediction into matrix """
-        return prediction.reshape(self.expected_n_objects, self.expected_n_rows,
-                                  self.expected_n_cols)
+        return prediction.reshape(self.expected_n_rows, self.expected_n_cols)
 
     def display_predictions(self, pipeline_predicted: np.array, features_df):
         """ Prepare plot with several neural networks and real target """
-        pipeline_matrices = self.transform_one_dim_into_matrices(pipeline_predicted)
-        target_matrices = self.transform_one_dim_into_matrices(np.array(features_df['target']))
-        nn_first_matrices = self.transform_one_dim_into_matrices(np.array(features_df['network_0.pth']))
-        nn_second_matrices = self.transform_one_dim_into_matrices(np.array(features_df['network_1.pth']))
+        pipeline_matrix = self.transform_one_dim_into_matrices(pipeline_predicted)
+        target_matrix = self.transform_one_dim_into_matrices(np.array(features_df['target']))
+        nn_first_matrix = self.transform_one_dim_into_matrices(np.array(features_df['network_0.pth']))
+        nn_second_matrix = self.transform_one_dim_into_matrices(np.array(features_df['network_1.pth']))
 
-        for tensor in [pipeline_matrices, target_matrices, nn_first_matrices, nn_second_matrices]:
+        for tensor in [pipeline_matrix, target_matrix, nn_first_matrix, nn_second_matrix]:
             tensor[tensor >= 0.5] = 1
             tensor[tensor < 0.5] = 0
 
-        n_objects, n_rows, n_cols = pipeline_matrices.shape
-        for i in range(n_objects):
-            title = f'Object {i}'
+        fig, axs = plt.subplots(2, 2)
+        im_first = axs[0, 0].imshow(nn_first_matrix, cmap='Blues', alpha=1.0,
+                                    vmin=0, vmax=1)
+        divider_first = make_axes_locatable(axs[0, 0])
+        cax_first = divider_first.append_axes("right", size="8%", pad=0.2)
+        cbar_first = plt.colorbar(im_first, cax=cax_first)
+        axs[0, 0].set_title('Network first predict')
 
-            fig, axs = plt.subplots(2, 2)
-            im_first = axs[0, 0].imshow(nn_first_matrices[i, :, :], cmap='Blues', alpha=0.8)
-            divider_first = make_axes_locatable(axs[0, 0])
-            cax_first = divider_first.append_axes("right", size="8%", pad=0.2)
-            cbar_first = plt.colorbar(im_first, cax=cax_first)
-            axs[0, 0].set_title(f'{title}. Network first predict')
+        im_second = axs[0, 1].imshow(nn_second_matrix, cmap='Blues', alpha=1.0,
+                                     vmin=0, vmax=1)
+        divider_second = make_axes_locatable(axs[0, 1])
+        cax_second = divider_second.append_axes("right", size="8%", pad=0.2)
+        cbar_second = plt.colorbar(im_second, cax=cax_second)
+        axs[0, 1].set_title('Network second predict')
 
-            im_second = axs[0, 1].imshow(nn_second_matrices[i, :, :], cmap='Blues', alpha=0.8)
-            divider_second = make_axes_locatable(axs[0, 1])
-            cax_second = divider_second.append_axes("right", size="8%", pad=0.2)
-            cbar_second = plt.colorbar(im_second, cax=cax_second)
-            axs[0, 1].set_title(f'{title}. Network second predict')
+        im_third = axs[1, 0].imshow(pipeline_matrix, cmap='Blues', alpha=1.0,
+                                    vmin=0, vmax=1)
+        divider_third = make_axes_locatable(axs[1, 0])
+        cax_third = divider_third.append_axes("right", size="8%", pad=0.2)
+        cbar_third = plt.colorbar(im_third, cax=cax_third)
+        axs[1, 0].set_title('Ensemble prediction')
 
-            im_third = axs[1, 0].imshow(pipeline_matrices[i, :, :], cmap='Blues', alpha=0.8)
-            divider_third = make_axes_locatable(axs[1, 0])
-            cax_third = divider_third.append_axes("right", size="8%", pad=0.2)
-            cbar_third = plt.colorbar(im_third, cax=cax_third)
-            axs[1, 0].set_title('Ensemble prediction')
+        im_fourth = axs[1, 1].imshow(target_matrix, cmap='Blues', alpha=1.0,
+                                     vmin=0, vmax=1)
+        divider_fourth = make_axes_locatable(axs[1, 1])
+        cax_fourth = divider_fourth.append_axes("right", size="8%", pad=0.2)
+        cbar_fourth = plt.colorbar(im_fourth, cax=cax_fourth)
+        axs[1, 1].set_title('Actual values')
 
-            im_fourth = axs[1, 1].imshow(target_matrices[i, :, :], cmap='Blues', alpha=1.0)
-            divider_fourth = make_axes_locatable(axs[1, 1])
-            cax_fourth = divider_fourth.append_axes("right", size="8%", pad=0.2)
-            cbar_fourth = plt.colorbar(im_fourth, cax=cax_fourth)
-            axs[1, 1].set_title('Actual values')
-
-            plt.tight_layout()
-            plt.show()
+        plt.tight_layout()
+        plt.show()
 
     def _load_neural_networks(self, networks_names: list) -> dict:
         """ Load PyTorch neural networks from serialized path using names """
@@ -243,6 +265,10 @@ def prepare_input_data(features):
     For FEDOT to run on new data not through API, you need to put the array
     in a special data class (InputData)
     """
+    from fedot.core.data.data import InputData
+    from fedot.core.repository.dataset_types import DataTypesEnum
+    from fedot.core.repository.tasks import Task, TaskTypesEnum
+
     task = Task(TaskTypesEnum.classification)
     features_input = InputData(idx=np.arange(len(features)),
                                features=features, target=None,

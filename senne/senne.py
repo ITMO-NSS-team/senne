@@ -1,10 +1,11 @@
 import json
 import os
+import pickle
 
 import pandas as pd
 import numpy as np
 import torch.utils.data as data_utils
-from fedot.api.main import Fedot
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report
 
 from senne.data.data import SenneDataLoader, train_test_torch, train_test_numpy
@@ -12,7 +13,7 @@ from senne.data.preprocessing import normalize, apply_normalization
 from senne.log import senne_logger
 from senne.repository.presets import *
 
-TRAIN_SIZE = 0.85
+TRAIN_SIZE = 0.7
 
 
 class Ensembler:
@@ -152,7 +153,7 @@ class Ensembler:
         :param data_paths: dictionary with paths to features matrices and target ones
         :param final_model: which model to use for ensembling.
         Available parameters:
-            * logit - logistic regression (in progress)
+            * logit - logistic regression
             * dt - decision tree classification (in progress)
             * automl - launch FEDOT framework as core
         :param sampling_ratio: which ratio of training sample need to use for training
@@ -163,6 +164,8 @@ class Ensembler:
         train_df, test_df = self.collect_predictions_from_networks()
         features_column = train_df.columns[:-1]
         if final_model == 'automl':
+            from fedot.api.main import Fedot
+
             # Launch FEDOT framework
             senne_logger.info('Launch AutoML algorithm')
 
@@ -171,8 +174,8 @@ class Ensembler:
 
             # Define parameters and start optimization
             pipeline = automl_model.fit(features=np.array(train_df[features_column]),
-                                        target=np.array(train_df['target']),
-                                        predefined_model='logit')
+                                        target=np.array(train_df['target']))
+            predictions = automl_model.predict(np.array(test_df[features_column]))
 
             #################
             # Save pipeline #
@@ -186,9 +189,19 @@ class Ensembler:
                     new_name = os.path.join(self.path, 'final_model')
                     os.rename(old_name, new_name)
 
-            # Display validation metrics
-            predictions = automl_model.predict(np.array(test_df[features_column]))
-            print(classification_report(test_df['target'], predictions))
+        elif final_model == 'logit':
+            logit = LogisticRegression()
+            logit.fit(np.array(train_df[features_column]), np.array(train_df['target']))
+            predictions = logit.predict(np.array(test_df[features_column]))
+
+            save_path = os.path.join(self.path, 'final_model.pkl')
+            with open(save_path, "wb") as f:
+                pickle.dump(logit, f)
+        else:
+            raise NotImplementedError(f'Model {final_model} can not be used')
+
+        # Display validation metrics
+        print(classification_report(test_df['target'], predictions))
 
     def collect_predictions_from_networks(self):
         """ Apply already fitted preprocessing """
@@ -307,7 +320,8 @@ def prepare_data_for_model(features_tensor: np.array, target_tensor: np.array,
     """ Prepare pytorch tensors in a form of datasets """
     # TODO use preprocessors classes
     train_fs, test_fs, train_target, test_target = train_test_numpy(features_tensor,
-                                                                    target_tensor)
+                                                                    target_tensor,
+                                                                    train_size=TRAIN_SIZE)
 
     # Normalize data
     train_fs = apply_normalization(train_fs, preprocess_info)
