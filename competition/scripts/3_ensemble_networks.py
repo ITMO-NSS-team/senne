@@ -5,7 +5,7 @@ if __name__ == '__main__':
     ensembler = Ensembler(path='example_folder', device='cuda')
 
     # Create an ensemble
-    ensembler.prepare_composite_model(data_paths={'features_path': '../data_simple/train_features',
-                                                  'target_path': '../data_simple/train_labels'},
+    ensembler.prepare_composite_model(data_paths={'features_path': '../data_ensemble/train_features',
+                                                  'target_path': '../data_ensemble/train_labels'},
                                       final_model='logit',
-                                      sampling_ratio=0.001)
+                                      sampling_ratio=0.01)

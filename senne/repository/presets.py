@@ -22,10 +22,10 @@ def create_two_simple_networks(**params) -> List[dict]:
                     'activation': 'sigmoid'}
     first_params = _update_parameters(first_params)
 
-    second_params = {'network': smp.MAnet,
+    second_params = {'network': smp.PAN,
                      'lr': 0.0001,
                      'loss': smp.utils.losses.JaccardLoss(),
-                     'epochs': 50,
+                     'epochs': 100,
                      'encoder_name': 'resnet18',
                      'encoder_weights': 'swsl',
                      'activation': 'sigmoid'}

@@ -235,8 +235,6 @@ def prepare_data_for_predict(features_tensor: np.array, preprocess_info: dict):
     # Normalize data
     features_tensor = apply_normalization(np.expand_dims(features_tensor, axis=0),
                                           preprocess_info)
-    features_tensor = np.array(features_tensor, dtype='float32')
-
     features_tensor = torch.from_numpy(features_tensor)
     return features_tensor
 
