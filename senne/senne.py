@@ -367,6 +367,11 @@ def _predict_on_dataset(nn_model, device: str, dataset: data_utils.TensorDataset
 
         predicted_masks.append(pr_mask)
 
+        import matplotlib.pyplot as plt
+        plt.imshow(pr_mask)
+        plt.colorbar()
+        plt.show()
+
     return np.array(predicted_masks)
 
 

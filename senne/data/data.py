@@ -66,7 +66,7 @@ class SenneDataLoader:
                 senne_logger.info(f'{ex.__str__()}')
                 pass
 
-        # Convert into pt tensors
+        # Convert into float
         all_features_matrices = np.array(all_features_matrices, dtype='float32')
         if self.target_path is not None:
             all_target_matrices = np.array(all_target_matrices, dtype='float32')

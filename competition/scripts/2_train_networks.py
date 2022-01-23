@@ -6,7 +6,7 @@ if __name__ == '__main__':
 
     # If there is no idea which networks to use - use preset
     preset = 'two_simple'
-    ensembler.train_neural_networks(data_paths={'features_path': '../data_simple/train_features',
-                                                'target_path': '../data_simple/train_labels'},
+    ensembler.train_neural_networks(data_paths={'features_path': '../data_ensemble/train_features',
+                                                'target_path': '../data_ensemble/train_labels'},
                                     preset=preset)
 
