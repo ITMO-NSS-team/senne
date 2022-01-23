@@ -11,7 +11,7 @@ import torch
 from geotiff import GeoTiff
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from senne.data.data import SenneDataLoader
+from senne.data.data import DataProcessor
 from senne.data.preprocessing import apply_normalization
 from tifffile import imsave
 
@@ -31,8 +31,8 @@ class MatrixPredict:
         self.final_model = final_model
 
         # Target path may be defined as None
-        self.data_loader = SenneDataLoader(features_path=data_paths['features_path'],
-                                           target_path=data_paths.get('target_path'))
+        self.data_loader = DataProcessor(features_path=data_paths['features_path'],
+                                         target_path=data_paths.get('target_path'))
         self.expected_n_rows = None
         self.expected_n_cols = None
         self.expected_n_objects = 0

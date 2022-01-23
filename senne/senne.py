@@ -7,13 +7,12 @@ import numpy as np
 import torch.utils.data as data_utils
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report
+from sklearn.model_selection import train_test_split
 
-from senne.data.data import SenneDataLoader, train_test_torch, train_test_numpy
+from senne.data.data import DataProcessor, TRAIN_SIZE, SenneDataset
 from senne.data.preprocessing import normalize, apply_normalization
 from senne.log import senne_logger
 from senne.repository.presets import *
-
-TRAIN_SIZE = 0.7
 
 
 class Ensembler:
@@ -33,6 +32,8 @@ class Ensembler:
         * augmentation - apply augmentation for images to extend train sample size
         * filter_min - filter images and stay only images with low cloud ratio (less than 20%)
         * filter_max - filter images and stay only images with high cloud ratio (more than 80%)
+        * filter_steady - filter images and stay only images with cloud ratio more than 20% and
+        less than 80%
         * remote_cloud - use advanced method from remote sensing to calculate special indices
 
     Sign ' | ' applied for composite preprocessing pipelines with several stages.
@@ -59,31 +60,14 @@ class Ensembler:
         self.device = device
 
         # Classes for data preprocessing
-        self.data_loader = None
-        self.remote_preprocessor = None
-        self.image_preprocessor = None
-
-        # Sampling parameters
         self.sampling_ratio = None
         self.sampling_ids = None
-        self.preprocessing_info = {}
+        self.data_processor = None
+        self.remote_preprocessor = None
+        self.image_preprocessor = None
+        self.preset = None
+
         self.nn_models = {}
-
-    def initialise_nn_models(self, preset: str):
-        """ Create several neural networks for experiments """
-        generate_function = self.networks_by_preset[preset]
-        # Get list with parameters for neural network
-        nn_params = generate_function()
-
-        for i, data_info in self.preprocessing_info.items():
-            current_network_parameters = nn_params[i]
-            current_network_parameters['in_channels'] = data_info['in_channels']
-            train_epoch, valid_epoch, nn_model = segmentation_net_builder(current_network_parameters)
-
-            # Store models into the folder
-            self.nn_models.update({i: {'train': [train_epoch, valid_epoch, nn_model],
-                                       'batch_size': current_network_parameters['batch_size'],
-                                       'epochs': current_network_parameters['epochs']}})
 
     def train_neural_networks(self, data_paths: dict, preset: str):
         """ Train several neural networks for image segmentation
@@ -91,20 +75,32 @@ class Ensembler:
         :param data_paths: dictionary with paths to features matrices and target ones
         :param preset: define which neural networks to use for ensembling
         """
-        # Load data and convert it into pt files
-        self.data_loader = SenneDataLoader(features_path=data_paths['features_path'],
-                                           target_path=data_paths['target_path'])
-        features_tensor, target_tensor = self.data_loader.get_numpy_arrays()
+        # Load data and prepare train test sample
+        self.data_processor = DataProcessor(features_path=data_paths['features_path'],
+                                            target_path=data_paths['target_path'])
+        self.data_processor.collect_sample_info(serialized_path=self.path)
 
-        # Launch data preparation with preprocessing
-        preprocessing_names = self.preprocessing_by_preset[preset]
-        self.apply_preprocessing(features_tensor, target_tensor, preprocessing_names)
-
-        # For every neural networks data has been already prepared - initialise networks
         self.initialise_nn_models(preset)
 
         # Fit neural networks and serialize models
         self._train_and_save()
+
+    def initialise_nn_models(self, preset: str):
+        """ Create several neural networks for experiments """
+        # TODO: refactor to create networks iteratively
+        self.preset = preset
+        generate_function = self.networks_by_preset[preset]
+        # Get list with parameters for neural network
+        n_networks_params = generate_function()
+
+        for i, current_network_parameters in enumerate(n_networks_params):
+            current_network_parameters['in_channels'] = self.data_processor.in_channels(self.path)
+            train_epoch, valid_epoch, nn_model = segmentation_net_builder(current_network_parameters)
+
+            # Store models into the folder
+            self.nn_models.update({i: {'train': [train_epoch, valid_epoch, nn_model],
+                                       'batch_size': current_network_parameters['batch_size'],
+                                       'epochs': current_network_parameters['epochs']}})
 
     def apply_preprocessing(self, features_tensor: np.array, target_tensor: np.array,
                             preprocessing_names: list):
@@ -159,8 +155,8 @@ class Ensembler:
         :param sampling_ratio: which ratio of training sample need to use for training
         """
         self.sampling_ratio = sampling_ratio
-        self.data_loader = SenneDataLoader(features_path=data_paths['features_path'],
-                                           target_path=data_paths['target_path'])
+        self.data_processor = DataProcessor(features_path=data_paths['features_path'],
+                                            target_path=data_paths['target_path'])
         train_df, test_df = self.collect_predictions_from_networks()
         features_column = train_df.columns[:-1]
         if final_model == 'automl':
@@ -217,7 +213,7 @@ class Ensembler:
             current_model_info = preprocess_info[network_name]
 
             # Prepare data for neural networks
-            features_tensor, target_tensor = self.data_loader.get_numpy_arrays()
+            features_tensor, target_tensor = self.data_processor.get_numpy_arrays()
             train_dataset, test_dataset = prepare_data_for_model(features_tensor,
                                                                  target_tensor,
                                                                  current_model_info)
@@ -270,26 +266,30 @@ class Ensembler:
 
     def _train_and_save(self):
         """ Train already initialized neural networks on prepared data """
-        for i, data_info in self.preprocessing_info.items():
+        # Get information about preprocessing
+        preprocessing_to_apply = self.preprocessing_by_preset[self.preset]
+
+        for i, neural_network_objects in self.nn_models.items():
+            current_preprocessing = preprocessing_to_apply[i]
+
             # For every network
-            neural_network_objects = self.nn_models[i]
             train_epoch, valid_epoch, nn_model = neural_network_objects['train']
             batch_size = neural_network_objects['batch_size']
             epochs = neural_network_objects['epochs']
 
-            # Load data by path for current model
-            data_path = self.preprocessing_info[i]['path']
-            features_path = os.path.join(data_path, 'features.pt')
-            target_path = os.path.join(data_path, 'target.pt')
+            # Load pandas Dataframe with paths to files
+            full_df = pd.read_csv(os.path.join(self.path, 'train.csv'))
+            train_df, valid_df = train_test_split(full_df, train_size=TRAIN_SIZE)
 
-            features = torch.load(features_path)
-            features = features.float()
-
-            target = torch.load(target_path)
-
-            # Split tensors and create datasets
-            train_dataset, valid_dataset = train_test_torch(features, target,
-                                                            train_size=TRAIN_SIZE)
+            # Create SENNE datasets
+            train_dataset = SenneDataset(serialized_folder=self.path,
+                                         dataframe_with_paths=train_df,
+                                         transforms=current_preprocessing)
+            # For validation there is no need to perform some calculations
+            valid_dataset = SenneDataset(serialized_folder=self.path,
+                                         dataframe_with_paths=valid_df,
+                                         transforms=current_preprocessing,
+                                         for_train=False)
 
             # Prepare data loaders
             train_loader = torch.utils.data.DataLoader(train_dataset,
@@ -313,30 +313,6 @@ class Ensembler:
 
             torch.save(nn_model, path_to_save)
             senne_logger.info(f'Model {i} was saved!')
-
-
-def prepare_data_for_model(features_tensor: np.array, target_tensor: np.array,
-                           preprocess_info: dict):
-    """ Prepare pytorch tensors in a form of datasets """
-    # TODO use preprocessors classes
-    train_fs, test_fs, train_target, test_target = train_test_numpy(features_tensor,
-                                                                    target_tensor,
-                                                                    train_size=TRAIN_SIZE)
-
-    # Normalize data
-    train_fs = apply_normalization(train_fs, preprocess_info)
-    test_fs = apply_normalization(test_fs, preprocess_info)
-
-    # Convert arrays into PyTorch tensors
-    train_fs = torch.from_numpy(train_fs)
-    test_fs = torch.from_numpy(test_fs)
-    train_target = torch.from_numpy(train_target)
-    test_target = torch.from_numpy(test_target)
-
-    # Create Datasets for train and validation
-    train_dataset = data_utils.TensorDataset(train_fs, train_target)
-    test_dataset = data_utils.TensorDataset(test_fs, test_target)
-    return train_dataset, test_dataset
 
 
 def get_predictions_from_networks(train_dataset: data_utils.TensorDataset,

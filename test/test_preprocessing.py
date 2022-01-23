@@ -18,7 +18,7 @@ def get_test_matrix():
 def test_normalization_correct():
     """ Check if normalization for matrices perform correctly """
     tensor, preprocessing_info = get_test_matrix()
-    scaled_tensor = apply_normalization(np.expand_dims(tensor, 0), preprocessing_info)
+    scaled_tensor = apply_normalization(tensor, preprocessing_info)
 
     assert np.isclose(scaled_tensor[0, 0, 0, 0], -0.5)
     assert np.isclose(scaled_tensor[0, 0, 0, 1], 0.5)
