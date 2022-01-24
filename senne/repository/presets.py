@@ -16,7 +16,7 @@ def create_two_simple_networks(**params) -> List[dict]:
     first_params = {'network': smp.Unet,
                     'lr': 0.0001,
                     'loss': smp.utils.losses.DiceLoss(),
-                    'epochs': 20,
+                    'epochs': 2,
                     'encoder_name': 'resnet18',
                     'encoder_weights': 'imagenet',
                     'activation': 'sigmoid'}
@@ -25,7 +25,7 @@ def create_two_simple_networks(**params) -> List[dict]:
     second_params = {'network': smp.PAN,
                      'lr': 0.0001,
                      'loss': smp.utils.losses.JaccardLoss(),
-                     'epochs': 20,
+                     'epochs': 2,
                      'encoder_name': 'resnet18',
                      'encoder_weights': 'swsl',
                      'activation': 'sigmoid'}

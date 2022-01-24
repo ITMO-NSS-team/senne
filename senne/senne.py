@@ -102,47 +102,6 @@ class Ensembler:
                                        'batch_size': current_network_parameters['batch_size'],
                                        'epochs': current_network_parameters['epochs']}})
 
-    def apply_preprocessing(self, features_tensor: np.array, target_tensor: np.array,
-                            preprocessing_names: list):
-        """ Apply preprocessing on PyTorch tensors
-
-        :param features_tensor: PyTorch tensor with source features matrices
-        :param target_tensor: PyTorch tensor with source target matrices
-        :param preprocessing_names: list with names of preprocessing strategies
-        """
-        preprocessing_information = {}
-        for i, preprocessing_name in enumerate(preprocessing_names):
-            copied_features = np.copy(features_tensor)
-            copied_target = np.copy(target_tensor)
-
-            # TODO implement different preprocessing strategies
-            prep_folder = os.path.join(self.path, ''.join(('preprocessing_', str(i))))
-            self._create_folder(prep_folder)
-
-            # Apply normalization - default preprocessing for every strategy
-            copied_features, copied_target, transformation_info = normalize(copied_features,
-                                                                            copied_target)
-
-            # Update shapes
-            _, in_channels, _, _ = copied_features.shape
-            self.preprocessing_info.update({i: {'path': prep_folder,
-                                                'in_channels': in_channels}})
-
-            # Save tensors in pt files
-            copied_features = torch.from_numpy(copied_features)
-            copied_target = torch.from_numpy(copied_target)
-            torch.save(copied_features, os.path.join(prep_folder, 'features.pt'))
-            torch.save(copied_target, os.path.join(prep_folder, 'target.pt'))
-
-            dict_for_update = {'preprocessing_name': preprocessing_name,
-                               'info': transformation_info}
-            preprocessing_information.update({''.join(('network_', str(i))): dict_for_update})
-
-        # Save information about preprocessing transformations
-        json_path = os.path.join(self.path, 'preprocessing.json')
-        with open(json_path, 'w') as f:
-            json.dump(preprocessing_information, f)
-
     def prepare_composite_model(self, data_paths: dict, final_model: str, sampling_ratio: float = 0.01):
         """ Start creating composite ensemble with several neural networks
 
@@ -150,76 +109,84 @@ class Ensembler:
         :param final_model: which model to use for ensembling.
         Available parameters:
             * logit - logistic regression
-            * dt - decision tree classification (in progress)
-            * automl - launch FEDOT framework as core
+            * weighted - weighted average with thresholds
+            * automl - launch FEDOT framework as a core
         :param sampling_ratio: which ratio of training sample need to use for training
         """
         self.sampling_ratio = sampling_ratio
         self.data_processor = DataProcessor(features_path=data_paths['features_path'],
                                             target_path=data_paths['target_path'])
-        train_df, test_df = self.collect_predictions_from_networks()
-        features_column = train_df.columns[:-1]
-        if final_model == 'automl':
-            from fedot.api.main import Fedot
 
-            # Launch FEDOT framework
-            senne_logger.info('Launch AutoML algorithm')
-
-            # task selection, initialisation of the framework
-            automl_model = Fedot(problem='classification', timeout=10)
-
-            # Define parameters and start optimization
-            pipeline = automl_model.fit(features=np.array(train_df[features_column]),
-                                        target=np.array(train_df['target']))
-            predictions = automl_model.predict(np.array(test_df[features_column]))
-
-            #################
-            # Save pipeline #
-            #################
-            pipeline.save(path=os.path.join(self.path, 'final_model'))
-            folders = os.listdir(self.path)
-            for folder in folders:
-                if folder.endswith('final_model'):
-                    # Folder need to be renamed
-                    old_name = os.path.join(self.path, folder)
-                    new_name = os.path.join(self.path, 'final_model')
-                    os.rename(old_name, new_name)
-
-        elif final_model == 'logit':
-            logit = LogisticRegression()
-            logit.fit(np.array(train_df[features_column]), np.array(train_df['target']))
-            predictions = logit.predict(np.array(test_df[features_column]))
-
-            save_path = os.path.join(self.path, 'final_model.pkl')
-            with open(save_path, "wb") as f:
-                pickle.dump(logit, f)
+        if final_model == 'weighted':
+            raise NotImplementedError(f'Weighted model in progress')
         else:
-            raise NotImplementedError(f'Model {final_model} can not be used')
+            train_df, test_df = self.collect_predictions_from_networks()
+            features_column = train_df.columns[:-1]
+            if final_model == 'automl':
+                from fedot.api.main import Fedot
 
-        # Display validation metrics
-        print(classification_report(test_df['target'], predictions))
+                # Launch FEDOT framework
+                senne_logger.info('Launch AutoML algorithm')
+
+                # task selection, initialisation of the framework
+                automl_model = Fedot(problem='classification', timeout=10)
+
+                # Define parameters and start optimization
+                pipeline = automl_model.fit(features=np.array(train_df[features_column]),
+                                            target=np.array(train_df['target']))
+                predictions = automl_model.predict(np.array(test_df[features_column]))
+
+                #################
+                # Save pipeline #
+                #################
+                pipeline.save(path=os.path.join(self.path, 'final_model'))
+                folders = os.listdir(self.path)
+                for folder in folders:
+                    if folder.endswith('final_model'):
+                        # Folder need to be renamed
+                        old_name = os.path.join(self.path, folder)
+                        new_name = os.path.join(self.path, 'final_model')
+                        os.rename(old_name, new_name)
+
+            elif final_model == 'logit':
+                logit = LogisticRegression()
+                logit.fit(np.array(train_df[features_column]), np.array(train_df['target']))
+                predictions = logit.predict(np.array(test_df[features_column]))
+
+                save_path = os.path.join(self.path, 'final_model.pkl')
+                with open(save_path, "wb") as f:
+                    pickle.dump(logit, f)
+            else:
+                raise NotImplementedError(f'Model {final_model} can not be used')
+
+            # Display validation metrics
+            print(classification_report(test_df['target'], predictions))
 
     def collect_predictions_from_networks(self):
         """ Apply already fitted preprocessing """
-        preprocess_json = os.path.join(self.path, 'preprocessing.json')
-        with open(preprocess_json) as json_file:
-            preprocess_info = json.load(json_file)
+        boundaries_info, networks_info = self._load_json_files()
 
-        number_of_models = len(preprocess_info.keys())
+        # Load dataframes with paths
+        train_paths = pd.read_csv(os.path.join(self.path, 'train.csv'))
+        test_paths = pd.read_csv(os.path.join(self.path, 'test.csv'))
+
+        network_files = [file for file in os.listdir(self.path) if '.pth' in file]
+        number_of_models = len(network_files)
         train_df = pd.DataFrame()
         test_df = pd.DataFrame()
-        for model_id in range(number_of_models):
-            network_name = ''.join(('network_', str(model_id)))
-            current_model_info = preprocess_info[network_name]
-
-            # Prepare data for neural networks
-            features_tensor, target_tensor = self.data_processor.get_numpy_arrays()
-            train_dataset, test_dataset = prepare_data_for_model(features_tensor,
-                                                                 target_tensor,
-                                                                 current_model_info)
-
+        for model_id, network_name in enumerate(network_files):
             # Make predictions
-            model_path = os.path.join(self.path, ''.join((network_name, '.pth')))
+            model_path = os.path.join(self.path, network_name)
+            current_preprocessing = networks_info[network_name]
+
+            train_dataset = SenneDataset(serialized_folder=self.path,
+                                         dataframe_with_paths=train_paths,
+                                         transforms=current_preprocessing)
+            # For validation there is no need to perform some calculations
+            test_dataset = SenneDataset(serialized_folder=self.path,
+                                        dataframe_with_paths=test_paths,
+                                        transforms=current_preprocessing,
+                                        for_train=False)
             train_predictions, test_predictions = get_predictions_from_networks(train_dataset, test_dataset,
                                                                                 model_path, self.device)
 
@@ -240,6 +207,17 @@ class Ensembler:
 
         senne_logger.info(f'Training sample size {len(train_df)}')
         return train_df, test_df
+
+    def _load_json_files(self):
+        boundaries_json = os.path.join(self.path, 'boundaries.json')
+        with open(boundaries_json) as json_file:
+            boundaries_info = json.load(json_file)
+
+        networks_json = os.path.join(self.path, 'networks_info.json')
+        with open(networks_json) as json_file:
+            networks_info = json.load(json_file)
+
+        return boundaries_info, networks_info
 
     @staticmethod
     def _create_folder(path):
@@ -269,6 +247,7 @@ class Ensembler:
         # Get information about preprocessing
         preprocessing_to_apply = self.preprocessing_by_preset[self.preset]
 
+        network_train_info = {'preset': self.preset}
         for i, neural_network_objects in self.nn_models.items():
             current_preprocessing = preprocessing_to_apply[i]
 
@@ -300,6 +279,7 @@ class Ensembler:
 
             # Launch training
             path_to_save = os.path.join(self.path, f'network_{i}.pth')
+            network_train_info.update({f'network_{i}.pth': current_preprocessing})
             checkpoints = [20, 30, 40, 50, 60, 70, 80, 90, 100, 150]
             for epoch_number in range(0, epochs):
 
@@ -314,9 +294,13 @@ class Ensembler:
             torch.save(nn_model, path_to_save)
             senne_logger.info(f'Model {i} was saved!')
 
+        json_path = os.path.join(self.path, 'networks_info.json')
+        with open(json_path, 'w') as f:
+            json.dump(network_train_info, f)
 
-def get_predictions_from_networks(train_dataset: data_utils.TensorDataset,
-                                  test_dataset: data_utils.TensorDataset,
+
+def get_predictions_from_networks(train_dataset: SenneDataset,
+                                  test_dataset: SenneDataset,
                                   model_path: str, device: str):
     """
     Make a prediction by corresponding neural network
@@ -330,13 +314,12 @@ def get_predictions_from_networks(train_dataset: data_utils.TensorDataset,
     return predicted_train_masks, predicted_test_masks
 
 
-def _predict_on_dataset(nn_model, device: str, dataset: data_utils.TensorDataset):
+def _predict_on_dataset(nn_model, device: str, dataset: SenneDataset):
     """ Iterative prediction from neural network """
-    features_tensor = dataset.tensors[0]
-    n_objects, _, _, _ = features_tensor.size()
+    n_objects = len(dataset)
     predicted_masks = []
     for i in range(n_objects):
-        current_features = features_tensor[i, :, :, :]
+        current_features, current_target = dataset.__getitem__(index=i)
         pr_mask = nn_model.predict(current_features.to(device).unsqueeze(0))
         # Into numpy array
         pr_mask = pr_mask.squeeze().cpu().numpy()
@@ -344,6 +327,8 @@ def _predict_on_dataset(nn_model, device: str, dataset: data_utils.TensorDataset
         predicted_masks.append(pr_mask)
 
         import matplotlib.pyplot as plt
+        pr_mask[pr_mask < 0.2] = 0
+        pr_mask[pr_mask >= 0.2] = 0
         plt.imshow(pr_mask)
         plt.colorbar()
         plt.show()
