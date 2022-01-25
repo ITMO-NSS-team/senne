@@ -10,9 +10,9 @@ from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 
 from senne.data.data import DataProcessor, TRAIN_SIZE, SenneDataset
-from senne.data.preprocessing import normalize, apply_normalization
 from senne.log import senne_logger
 from senne.repository.presets import *
+from senne.weighted import WeightedEnsemble
 
 
 class Ensembler:
@@ -118,7 +118,10 @@ class Ensembler:
                                             target_path=data_paths['target_path'])
 
         if final_model == 'weighted':
-            raise NotImplementedError(f'Weighted model in progress')
+            boundaries_info, networks_info = self._load_json_files()
+            weighted_model = WeightedEnsemble(boundaries_info, networks_info,
+                                              path=self.path, device=self.device)
+            weighted_model.fit()
         else:
             train_df, test_df = self.collect_predictions_from_networks()
             features_column = train_df.columns[:-1]
@@ -282,14 +285,17 @@ class Ensembler:
             network_train_info.update({f'network_{i}.pth': current_preprocessing})
             checkpoints = [20, 30, 40, 50, 60, 70, 80, 90, 100, 150]
             for epoch_number in range(0, epochs):
+                try:
+                    print('\nEpoch: {}'.format(epoch_number))
+                    train_logs = train_epoch.run(train_loader)
+                    valid_logs = valid_epoch.run(valid_loader)
 
-                print('\nEpoch: {}'.format(epoch_number))
-                train_logs = train_epoch.run(train_loader)
-                valid_logs = valid_epoch.run(valid_loader)
-
-                if any(epoch_number == checkpoint for checkpoint in checkpoints):
-                    senne_logger.info(f'Model {i} was saved for epoch {epoch_number}!')
-                    torch.save(nn_model, path_to_save)
+                    if any(epoch_number == checkpoint for checkpoint in checkpoints):
+                        senne_logger.info(f'Model {i} was saved for epoch {epoch_number}!')
+                        torch.save(nn_model, path_to_save)
+                except RuntimeError as ex:
+                    print(f'RuntimeError occurred {ex.__str__()}. Continue')
+                    continue
 
             torch.save(nn_model, path_to_save)
             senne_logger.info(f'Model {i} was saved!')
@@ -316,6 +322,7 @@ def get_predictions_from_networks(train_dataset: SenneDataset,
 
 def _predict_on_dataset(nn_model, device: str, dataset: SenneDataset):
     """ Iterative prediction from neural network """
+    nn_model = nn_model.to(device)
     n_objects = len(dataset)
     predicted_masks = []
     for i in range(n_objects):
@@ -325,14 +332,6 @@ def _predict_on_dataset(nn_model, device: str, dataset: SenneDataset):
         pr_mask = pr_mask.squeeze().cpu().numpy()
 
         predicted_masks.append(pr_mask)
-
-        import matplotlib.pyplot as plt
-        pr_mask[pr_mask < 0.2] = 0
-        pr_mask[pr_mask >= 0.2] = 0
-        plt.imshow(pr_mask)
-        plt.colorbar()
-        plt.show()
-
     return np.array(predicted_masks)
 
 

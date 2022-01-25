@@ -52,6 +52,16 @@ class DataProcessor:
             # Create plot
             create_matrix_plot(features_array, label_matrix)
 
+    def check_bands_number(self, correct_band_number: int):
+        """ Check if features contain desired number of bands """
+        chip_folders = os.listdir(self.features_path)
+        for current_chip in chip_folders:
+            chip_path = os.path.join(self.features_path, current_chip)
+            train_files = os.listdir(chip_path)
+
+            if len(train_files) != correct_band_number:
+                print(f'Chip with path {chip_path} is incorrect')
+
     def collect_sample_info(self, serialized_path: str):
         """ Explore training sample - collect dataframe with all samples.
         Create json file with boundaries for normalization for each band
