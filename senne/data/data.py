@@ -9,9 +9,8 @@ import torch.utils.data as data_utils
 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sklearn.model_selection import train_test_split
-
-from geotiff import GeoTiff
-from typing import List, Optional
+from tifffile import imread
+from typing import Optional
 
 from senne.data.preprocessing import apply_normalization
 from senne.log import senne_logger
@@ -45,9 +44,7 @@ class DataProcessor:
 
             # Read array with labels
             tiff_label_name = ''.join((current_chip, '.tif'))
-            opened_label_tiff = GeoTiff(os.path.join(self.target_path,
-                                                     tiff_label_name))
-            label_matrix = np.array(opened_label_tiff.read())
+            label_matrix = imread(os.path.join(self.target_path, tiff_label_name))
 
             # Create plot
             create_matrix_plot(features_array, label_matrix)
@@ -101,8 +98,7 @@ class DataProcessor:
             features_paths.append(os.path.abspath(chip_path))
             target_paths.append(os.path.abspath(target_path))
 
-            opened_label_tiff = GeoTiff(target_path)
-            label_matrix = np.array(opened_label_tiff.read())
+            label_matrix = imread(target_path)
             n_rows, n_cols = label_matrix.shape
             cloud_percent = len(np.argwhere(label_matrix == 1)) / (n_rows * n_cols)
             cloud_ratio.append(round(cloud_percent, 3))
@@ -167,9 +163,7 @@ class DataProcessor:
         final_tensor = []
         for tiff_file in bands_tiff:
             tiff_path = os.path.join(area_path, tiff_file)
-
-            opened_tiff = GeoTiff(tiff_path)
-            matrix = np.array(opened_tiff.read())
+            matrix = imread(tiff_path)
 
             final_tensor.append(matrix)
 
@@ -213,10 +207,11 @@ class SenneDataset(data_utils.Dataset):
 
         # Convert into numpy arrays
         feature_array = DataProcessor.read_geotiff_file(feature_path)
-        opened_label_tiff = GeoTiff(target_path)
-        label_matrix = np.array(opened_label_tiff.read(), dtype='float32')
+        label_matrix = imread(target_path)
+        label_matrix = np.array(label_matrix, dtype='float32')
         label_matrix = np.expand_dims(label_matrix, 0)
-        self.perform_matrix_preprocessing(feature_array, label_matrix)
+        feature_array, label_matrix = self.perform_matrix_preprocessing(feature_array,
+                                                                        label_matrix)
 
         # Convert into tensors
         feature_array = torch.from_numpy(feature_array)

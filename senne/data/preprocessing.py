@@ -1,7 +1,5 @@
 import numpy as np
 
-from senne.log import senne_logger
-
 
 class RemoteSensingPreprocessor:
     """ Class for applying data preprocessing for remote sensing data during ensembling """

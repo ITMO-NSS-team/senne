@@ -118,10 +118,10 @@ class Ensembler:
                                             target_path=data_paths['target_path'])
 
         if final_model == 'weighted':
-            boundaries_info, networks_info = self._load_json_files()
+            boundaries_info, networks_info = load_json_files(self.path)
             weighted_model = WeightedEnsemble(boundaries_info, networks_info,
                                               path=self.path, device=self.device)
-            weighted_model.fit()
+            weighted_model.fit(100)
         else:
             train_df, test_df = self.collect_predictions_from_networks()
             features_column = train_df.columns[:-1]
@@ -167,7 +167,7 @@ class Ensembler:
 
     def collect_predictions_from_networks(self):
         """ Apply already fitted preprocessing """
-        boundaries_info, networks_info = self._load_json_files()
+        boundaries_info, networks_info = load_json_files(self.path)
 
         # Load dataframes with paths
         train_paths = pd.read_csv(os.path.join(self.path, 'train.csv'))
@@ -211,17 +211,6 @@ class Ensembler:
         senne_logger.info(f'Training sample size {len(train_df)}')
         return train_df, test_df
 
-    def _load_json_files(self):
-        boundaries_json = os.path.join(self.path, 'boundaries.json')
-        with open(boundaries_json) as json_file:
-            boundaries_info = json.load(json_file)
-
-        networks_json = os.path.join(self.path, 'networks_info.json')
-        with open(networks_json) as json_file:
-            networks_info = json.load(json_file)
-
-        return boundaries_info, networks_info
-
     @staticmethod
     def _create_folder(path):
         if os.path.isdir(path) is False:
@@ -263,6 +252,9 @@ class Ensembler:
             full_df = pd.read_csv(os.path.join(self.path, 'train.csv'))
             train_df, valid_df = train_test_split(full_df, train_size=TRAIN_SIZE)
 
+            # Filter train data if it's required
+            train_df = filter_data(train_df, current_preprocessing)
+
             # Create SENNE datasets
             train_dataset = SenneDataset(serialized_folder=self.path,
                                          dataframe_with_paths=train_df,
@@ -293,7 +285,10 @@ class Ensembler:
                     if any(epoch_number == checkpoint for checkpoint in checkpoints):
                         senne_logger.info(f'Model {i} was saved for epoch {epoch_number}!')
                         torch.save(nn_model, path_to_save)
+
                 except RuntimeError as ex:
+                    senne_logger.info(f'Model {i} was saved for epoch {epoch_number}!')
+                    torch.save(nn_model, path_to_save)
                     print(f'RuntimeError occurred {ex.__str__()}. Continue')
                     continue
 
@@ -320,19 +315,17 @@ def get_predictions_from_networks(train_dataset: SenneDataset,
     return predicted_train_masks, predicted_test_masks
 
 
-def _predict_on_dataset(nn_model, device: str, dataset: SenneDataset):
-    """ Iterative prediction from neural network """
-    nn_model = nn_model.to(device)
-    n_objects = len(dataset)
-    predicted_masks = []
-    for i in range(n_objects):
-        current_features, current_target = dataset.__getitem__(index=i)
-        pr_mask = nn_model.predict(current_features.to(device).unsqueeze(0))
-        # Into numpy array
-        pr_mask = pr_mask.squeeze().cpu().numpy()
+def load_json_files(path: str):
+    path = os.path.abspath(path)
+    boundaries_json = os.path.join(path, 'boundaries.json')
+    with open(boundaries_json) as json_file:
+        boundaries_info = json.load(json_file)
 
-        predicted_masks.append(pr_mask)
-    return np.array(predicted_masks)
+    networks_json = os.path.join(path, 'networks_info.json')
+    with open(networks_json) as json_file:
+        networks_info = json.load(json_file)
+
+    return boundaries_info, networks_info
 
 
 def create_row_column_features(predictions: np.array, sampling_ids: np.array = None):
@@ -358,3 +351,34 @@ def create_row_column_features(predictions: np.array, sampling_ids: np.array = N
         sampled_row_ids = all_row_matrix[sampling_ids]
         sampled_col_ids = all_col_matrix[sampling_ids]
         return [sampled_row_ids, sampled_col_ids]
+
+
+def filter_data(train_df: pd.DataFrame, current_preprocessing: str):
+    """ Filter training sample by cloud conditions """
+    if 'filter_min' in current_preprocessing:
+        # Remain only images with low cloud ratio (less than 20%)
+        train_df = train_df[train_df['cloud_ratio'] <= 0.2]
+    elif 'filter_steady' in current_preprocessing:
+        # Cloud ratio between 20 and 80%
+        train_df = train_df[train_df['cloud_ratio'] >= 0.2]
+        train_df = train_df[train_df['cloud_ratio'] <= 0.8]
+    elif 'filter_max' in current_preprocessing:
+        # Remain only images with high cloud ratio (more than 80%)
+        train_df = train_df[train_df['cloud_ratio'] >= 0.8]
+
+    return train_df
+
+
+def _predict_on_dataset(nn_model, device: str, dataset: SenneDataset):
+    """ Iterative prediction from neural network """
+    nn_model = nn_model.to(device)
+    n_objects = len(dataset)
+    predicted_masks = []
+    for i in range(n_objects):
+        current_features, current_target = dataset.__getitem__(index=i)
+        pr_mask = nn_model.predict(current_features.to(device).unsqueeze(0))
+        # Into numpy array
+        pr_mask = pr_mask.squeeze().cpu().numpy()
+
+        predicted_masks.append(pr_mask)
+    return np.array(predicted_masks)

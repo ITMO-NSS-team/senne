@@ -8,7 +8,7 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 import torch
-from geotiff import GeoTiff
+from tifffile import imread
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from senne.data.data import DataProcessor
@@ -80,8 +80,7 @@ class MatrixPredict:
                 if self.data_paths.get('target_path') is not None:
                     target_name = ''.join((geotiff_file, '.tif'))
                     target_path = os.path.join(self.data_paths['target_path'], target_name)
-                    opened_label_tiff = GeoTiff(target_path)
-                    target_matrix = np.array(opened_label_tiff.read())
+                    target_matrix = imread(target_path)
                 else:
                     target_matrix = None
 
