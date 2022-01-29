@@ -30,7 +30,7 @@ def create_two_simple_networks(**params) -> List[dict]:
                      'encoder_weights': 'swsl',
                      'activation': 'sigmoid'}
     second_params = _update_parameters(second_params)
-    return [first_params, second_params]
+    return [second_params, first_params, second_params]
 
 
 def create_three_simple_networks(**params) -> List[dict]:

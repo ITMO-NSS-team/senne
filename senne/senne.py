@@ -122,6 +122,10 @@ class Ensembler:
             weighted_model = WeightedEnsemble(boundaries_info, networks_info,
                                               path=self.path, device=self.device)
             weighted_model.fit(100)
+            # Save parameters
+            json_path = os.path.join(self.path, 'ensemble_info.json')
+            with open(json_path, 'w') as f:
+                json.dump(weighted_model.parameters, f)
         else:
             train_df, test_df = self.collect_predictions_from_networks()
             features_column = train_df.columns[:-1]
