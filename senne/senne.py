@@ -44,7 +44,7 @@ class Ensembler:
                           'four_simple': create_four_simple_networks,
                           'two_advanced': create_two_advanced_networks}
 
-    preprocessing_by_preset = {'two_simple': ['default', 'default'],
+    preprocessing_by_preset = {'two_simple': ['filter_steady', 'filter_max'],
                                'three_simple': ['default', 'augmentation',
                                                 'filter_max'],
                                'four_simple': ['default', 'augmentation',
@@ -52,8 +52,12 @@ class Ensembler:
                                'two_advanced': ['filter_min | augmentation',
                                                 'filter_max | remote_cloud | augmentation']}
 
-    def __init__(self, path: str, device: str = 'cuda'):
+    def __init__(self, path: str, metadata_path: str = None, device: str = 'cuda'):
         self.path = os.path.abspath(path)
+        if metadata_path is not None:
+            self.metadata_path = os.path.abspath(metadata_path)
+        else:
+            self.metadata_path = None
         # Create folder if necessary
         self._create_folder(self.path)
 
@@ -120,8 +124,9 @@ class Ensembler:
         if final_model == 'weighted':
             boundaries_info, networks_info = load_json_files(self.path)
             weighted_model = WeightedEnsemble(boundaries_info, networks_info,
-                                              path=self.path, device=self.device)
-            weighted_model.fit(100)
+                                              path=self.path, device=self.device,
+                                              metadata_path=self.metadata_path)
+            weighted_model.fit(50)
             # Save parameters
             json_path = os.path.join(self.path, 'ensemble_info.json')
             with open(json_path, 'w') as f:

@@ -218,6 +218,15 @@ class SenneDataset(data_utils.Dataset):
         label_matrix = torch.from_numpy(label_matrix)
         return feature_array, label_matrix
 
+    def get_chip_name_by_id(self, index: int) -> str:
+        """ Return chip name for desired index """
+        row_object = self.dataframe_with_paths.loc[index]
+        target_path = row_object['target']
+        splitted_path = os.path.split(target_path)
+
+        name_components = splitted_path[-1].split('.')
+        return name_components[0]
+
     def perform_dataset_preprocessing(self, transforms: str):
         # There are no dataset preprocessing procedures yet
         self.dataframe_with_paths = self.dataframe_with_paths.reset_index()
