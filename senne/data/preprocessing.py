@@ -46,7 +46,7 @@ def normalize(features_tensor: np.array, target_tensor: np.array):
 
 
 def apply_normalization(features_tensor: np.array, preprocessing_info: dict):
-    """ Perform normalization procedure for new unseen data """
+    """ Perform normalization procedure for new_serialized_folder unseen data """
     n_bands, n_rows, n_columns = features_tensor.shape
     features_tensor = np.array(features_tensor, dtype='float32')
 

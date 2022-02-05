@@ -2,7 +2,7 @@ import os
 import numpy as np
 from tifffile import imsave, imread
 
-from senne.data.data import create_matrix_plot
+from senne.data.data import create_matrix_plot, DataProcessor
 
 BANDS = ["B02", "B03", "B04", "B08"]
 
@@ -47,7 +47,16 @@ def filter_matrices(path, path_to_save):
             print(f'Bad example {area}. Skip it!')
 
 
+def display_min_max_boundaries():
+    data_processor = DataProcessor(features_path='../data/train_features',
+                                   target_path='../data/train_labels')
+    data_processor.collect_sample_info(serialized_path='new_serialized_folder',
+                                       display_labels=True)
+
+
 if __name__ == '__main__':
-    data_path = 'D:/ITMO/senne/competition/data'
-    save_path = 'D:/filtered_data'
-    filter_matrices(data_path, save_path)
+    # data_path = 'D:/ITMO/senne/competition/data'
+    # save_path = 'D:/filtered_data'
+    # filter_matrices(data_path, save_path)
+
+    display_min_max_boundaries()

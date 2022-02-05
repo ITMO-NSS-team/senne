@@ -259,7 +259,7 @@ def create_row_column_features_for_predict(predictions: np.array):
 
 def prepare_input_data(features):
     """
-    For FEDOT to run on new data not through API, you need to put the array
+    For FEDOT to run on new_serialized_folder data not through API, you need to put the array
     in a special data class (InputData)
     """
     from fedot.core.data.data import InputData

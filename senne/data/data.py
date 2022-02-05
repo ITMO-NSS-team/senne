@@ -59,11 +59,13 @@ class DataProcessor:
             if len(train_files) != correct_band_number:
                 print(f'Chip with path {chip_path} is incorrect')
 
-    def collect_sample_info(self, serialized_path: str):
+    def collect_sample_info(self, serialized_path: str, display_labels: bool = False):
         """ Explore training sample - collect dataframe with all samples.
         Create json file with boundaries for normalization for each band
 
         :param serialized_path: path to folder for serialization
+        :param display_labels: is there a need to display chip labels for min and max
+        values per each band
         """
         # Check if files already exist in the path or not
         if self._is_sample_info_already_collected(serialized_path):
@@ -93,7 +95,12 @@ class DataProcessor:
             if os.path.isfile(target_path) is False:
                 continue
 
-            self.define_normalization_boundaries(features_array, boundaries)
+            if display_labels:
+                self.define_normalization_boundaries_with_labels(features_array,
+                                                                 boundaries,
+                                                                 current_chip)
+            else:
+                self.define_normalization_boundaries(features_array, boundaries)
 
             features_paths.append(os.path.abspath(chip_path))
             target_paths.append(os.path.abspath(target_path))
@@ -153,6 +160,30 @@ class DataProcessor:
                     current_band_info['min'] = float(min_band_value)
                 if max_band_value > current_band_info['max']:
                     current_band_info['max'] = float(max_band_value)
+
+    @staticmethod
+    def define_normalization_boundaries_with_labels(features_array: np.array,
+                                                    boundaries: dict,
+                                                    current_chip: str):
+        for band_number, band_matrix in enumerate(features_array):
+            min_band_value = np.min(band_matrix)
+            max_band_value = np.max(band_matrix)
+
+            current_band_info = boundaries.get(band_number)
+            if current_band_info is None:
+                # Create initial min max dictionary info
+                boundaries[band_number] = {'min': float(min_band_value),
+                                           'max': float(max_band_value),
+                                           'min_id': current_chip,
+                                           'max_id': current_chip}
+            else:
+                # Boundaries are already exist
+                if min_band_value < current_band_info['min']:
+                    current_band_info['min'] = float(min_band_value)
+                    current_band_info['min_id'] = current_chip
+                if max_band_value > current_band_info['max']:
+                    current_band_info['max'] = float(max_band_value)
+                    current_band_info['max_id'] = current_chip
 
     @staticmethod
     def read_geotiff_file(area_path: str) -> np.array:
