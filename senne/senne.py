@@ -1,5 +1,6 @@
 import json
 import os
+from typing import Union
 
 import pandas as pd
 import torch.utils.data as data_utils
@@ -103,7 +104,9 @@ class Ensembler:
                                        'batch_size': current_network_parameters['batch_size'],
                                        'epochs': current_network_parameters['epochs']}})
 
-    def prepare_composite_model(self, data_paths: dict, final_model: str, sampling_ratio: float = 0.01):
+    def prepare_composite_model(self, data_paths: dict, final_model: str,
+                                sampling_ratio: Union[float, None] = 0.01,
+                                use_shift: bool = False):
         """ Start creating composite ensemble with several neural networks
 
         :param data_paths: dictionary with paths to features matrices and target ones
@@ -113,6 +116,7 @@ class Ensembler:
             * weighted - weighted average with thresholds
             * automl - launch FEDOT framework as a core
         :param sampling_ratio: which ratio of training sample need to use for training
+        :param use_shift: is there a need to use shifting in model training
         """
         self.data_processor = DataProcessor(features_path=data_paths['features_path'],
                                             target_path=data_paths['target_path'])
@@ -130,7 +134,8 @@ class Ensembler:
         else:
             ml_model = MLEnsemble(final_model, boundaries_info, networks_info,
                                   path=self.path, device=self.device,
-                                  metadata_path=self.metadata_path)
+                                  metadata_path=self.metadata_path,
+                                  use_shift=use_shift)
             ml_model.fit(sampling_ratio)
 
     @staticmethod

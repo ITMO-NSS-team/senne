@@ -46,7 +46,7 @@ def configure_ml_model():
                           path=SERIALIZED_MODELS_DIR,
                           metadata_path=None,
                           device=DEVICE, for_predict=True,
-                          model_name='rf')
+                          model_name='rf', use_shift=True)
 
     return ensemble
 

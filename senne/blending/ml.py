@@ -1,11 +1,14 @@
 import os
 import pickle
+import timeit
 
 import pandas as pd
 import numpy as np
 import torch
 from sklearn.ensemble import RandomForestClassifier
+
 from sklearn.linear_model import LogisticRegression
+from sklearn.naive_bayes import GaussianNB
 from sklearn.svm import SVC
 from sklearn.metrics import f1_score
 
@@ -18,13 +21,15 @@ class MLEnsemble(AbstractEnsemble):
 
     model_by_name = {'logit': LogisticRegression,
                      'rf': RandomForestClassifier,
-                     'svc': SVC}
+                     'svc': SVC,
+                     'naive_bayes': GaussianNB}
 
     def __init__(self, model_name: str, boundaries_info: dict, networks_info: dict, path: str,
                  device: str, metadata_path: str = None, for_predict: bool = False,
-                 use_coordinates: bool = False):
+                 use_coordinates: bool = False, use_shift: bool = False):
         super().__init__(boundaries_info, networks_info, path, device, metadata_path, for_predict)
         self.model_name = model_name
+        self.use_shift = use_shift
 
         # Is there a need to use coordinates as features to train ensemble
         self.use_coordinates = use_coordinates
@@ -55,17 +60,20 @@ class MLEnsemble(AbstractEnsemble):
                                                                 actual_matrix, sampling_ratio)
                 train_dataframe = pd.concat([train_dataframe, new_dataframe])
 
+        if self.use_shift:
+            train_dataframe = create_shifted_features(train_dataframe)
+
+        if self.use_shift is True and sampling_ratio is not None:
+            # There is a need to prepare "sparse" dataframe due to it wasn't prepared previously
+            train_dataframe = sample_train_data(train_dataframe, sampling_ratio)
+
         # Train appropriate algorithm
         senne_logger.info(f'Start to train ensemble model on {len(train_dataframe)} objects')
-        features_column = train_dataframe.columns[: -1]
+        # Initialize model
+        class_model = self.model_by_name[self.model_name]()
 
-        # Initialize
-        if self.model_name == 'rf':
-            class_model = self.model_by_name[self.model_name](n_estimators=25,
-                                                              max_depth=6)
-        else:
-            class_model = self.model_by_name[self.model_name]()
-        train_array = np.array(train_dataframe[features_column])
+        # Take table without last column (target)
+        train_array = train_dataframe.values[:, :-1]
         train_target = np.array(train_dataframe['target'])
         class_model.fit(train_array, train_target)
 
@@ -108,14 +116,18 @@ class MLEnsemble(AbstractEnsemble):
         features_for_predict = self._prepare_table_dataframe(features_matrix=features_matrix,
                                                              nn_forecasts=predicted_probabilities_field,
                                                              actual_matrix=None, sampling_ratio=None)
+        if self.use_shift:
+            features_for_predict = create_shifted_features(features_for_predict, for_predict=True)
+
+        start = timeit.default_timer()
         predicted = self.ensemble_model.predict(features_for_predict.values)
         predicted = predicted.reshape(n_rows, n_cols)
         predicted = predicted.astype(np.uint8)
+        print('Predict time', timeit.default_timer() - start)
 
         return predicted
 
-    @staticmethod
-    def _prepare_table_dataframe(features_matrix: np.array, nn_forecasts: np.array,
+    def _prepare_table_dataframe(self, features_matrix: np.array, nn_forecasts: np.array,
                                  actual_matrix: np.array, sampling_ratio: float = None) -> pd.DataFrame:
         """ Create dataframe in tabular form for time series
 
@@ -140,17 +152,9 @@ class MLEnsemble(AbstractEnsemble):
             tabular_data.update({'target': np.ravel(actual_matrix)})
 
         tabular_data = pd.DataFrame(tabular_data)
-        if sampling_ratio is not None and actual_matrix is not None:
-            # Only for train stage
-            n_pixels = len(tabular_data)
-            n_pixels_to_take = round(n_pixels * sampling_ratio)
-
-            # Define sampling ids to take based on ratio
-            source_ids = np.arange(0, n_pixels)
-            np.random.shuffle(source_ids)
-            sampling_ids = source_ids[: n_pixels_to_take]
-            # Take only a part of pixels
-            tabular_data = tabular_data.iloc[sampling_ids]
+        # Perform sampling only for train and if no shifting is planned
+        if sampling_ratio is not None and actual_matrix is not None and self.use_shift is False:
+            tabular_data = sample_train_data(tabular_data, sampling_ratio)
 
         return tabular_data
 
@@ -160,3 +164,60 @@ class MLEnsemble(AbstractEnsemble):
         current_features, _ = dataset.__getitem__(index=field_id)
         current_features = current_features.squeeze().cpu().numpy()
         return current_features
+
+
+def sample_train_data(tabular_data, sampling_ratio):
+    """ Take small part of pixels from dataframe """
+    n_pixels = len(tabular_data)
+    n_pixels_to_take = round(n_pixels * sampling_ratio)
+
+    # Define sampling ids to take based on ratio
+    source_ids = np.arange(0, n_pixels)
+    np.random.shuffle(source_ids)
+    sampling_ids = source_ids[: n_pixels_to_take]
+    # Take only a part of pixels
+    tabular_data = tabular_data.iloc[sampling_ids]
+
+    return tabular_data
+
+
+def create_shifted_features(train_dataframe: pd.DataFrame, for_predict: bool = False):
+    """ Take neighboring pixels values as additional features
+
+    Pixels
+    a1 | a2 | a3
+    -------------
+    a4 | a5 | a6
+    -------------
+    a7 | a8 | a9
+
+    For a5 values from a4 and a6 will be used
+    """
+    start = timeit.default_timer()
+    # TODO change
+    matrix_side_size = 512
+
+    if for_predict:
+        features = train_dataframe
+    else:
+        # Take only features table
+        features_columns = train_dataframe.columns[:-1]
+        features = train_dataframe[features_columns]
+
+    neighboring_left_side = features.shift(1)
+    neighboring_right_side = features.shift(-1)
+
+    neighboring_left_side.iloc[0, :] = features.iloc[0, :]
+    neighboring_right_side.iloc[-1, :] = features.iloc[-1, :]
+
+    # Correct border pixels for horizontal propagation
+    almost_all_matrix_elements = (matrix_side_size * matrix_side_size) - 1
+    ids = np.arange(matrix_side_size - 1, almost_all_matrix_elements, matrix_side_size)
+    ids_plus = np.arange(matrix_side_size, almost_all_matrix_elements, matrix_side_size)
+    neighboring_right_side.iloc[ids, :] = features.iloc[ids, :]
+    neighboring_left_side.iloc[ids_plus, :] = features.iloc[ids_plus, :]
+
+    # Take only source features and first neural network prediction
+    train_dataframe = pd.concat([neighboring_left_side, neighboring_right_side, train_dataframe], axis=1)
+    print(timeit.default_timer() - start)
+    return train_dataframe

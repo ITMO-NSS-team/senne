@@ -5,6 +5,7 @@ import segmentation_models_pytorch as smp
 import numpy as np
 from tifffile import imread
 from typing import Callable
+import timeit
 
 from senne.blending.ml import MLEnsemble
 from senne.data.data import DataProcessor
@@ -46,7 +47,7 @@ def configure_ml_model():
                           path=SERIALIZED_MODELS_DIR,
                           metadata_path=None,
                           device=DEVICE, for_predict=True,
-                          model_name='rf')
+                          model_name='rf', use_shift=True)
 
     return ensemble
 
@@ -80,4 +81,6 @@ def calculate_for_ensemble_model(loading_function: Callable):
 
 
 if __name__ == '__main__':
+    start = timeit.default_timer()
     calculate_for_ensemble_model(configure_ml_model)
+    print(timeit.default_timer()-start)
