@@ -1,36 +1,41 @@
-import pickle
-
-import numpy as np
-import os
 from pathlib import Path
-from senne.senne import load_json_files
+import numpy as np
 from tifffile import imsave, imread
 
+from senne.blending.ml import MLEnsemble
+from senne.senne import load_json_files
+
 ROOT_DIRECTORY = Path("..")
+PREDICTIONS_DIRECTORY = ROOT_DIRECTORY / "predictions"
 INPUT_IMAGES_DIRECTORY = ROOT_DIRECTORY / "data/train_features"
-DEVICE = 'cuda'
+SERIALIZED_MODELS_DIR = ROOT_DIRECTORY / "serialized"
 
 BANDS = ["B02", "B03", "B04", "B08"]
+DEVICE = 'cuda'
 chip_ids = (pth.name for pth in INPUT_IMAGES_DIRECTORY.iterdir() if not pth.name.startswith("."))
 
+#################
+# PREPARE MODEL #
+#################
+metadata_path = ROOT_DIRECTORY / "data/train_metadata.csv"
+boundaries_info, networks_info = load_json_files(SERIALIZED_MODELS_DIR)
+ensemble = MLEnsemble(boundaries_info=boundaries_info, networks_info=networks_info,
+                      path=SERIALIZED_MODELS_DIR, metadata_path=None,
+                      device=DEVICE, for_predict=True, model_name='naive_bayes',
+                      use_shift=True)
+#################
+# PREPARE MODEL #
+#################
 
-if __name__ == '__main__':
-    serialed_path = 'D:/ITMO/senne/competition/serialized'
-    path = os.path.join(serialed_path, 'final_model.pkl')
-    with open(path, "rb") as f:
-        ensemble = pickle.load(f)
-        ensemble.path = serialed_path
-        ensemble.device = DEVICE
+for chip_id in chip_ids:
+    band_arrs = []
+    for band in BANDS:
+        band_arr = imread(INPUT_IMAGES_DIRECTORY / f"{chip_id}/{band}.tif")
+        band_arrs.append(band_arr)
+    chip_arr = np.stack(band_arrs)
 
-    for chip_id in chip_ids:
-        band_arrs = []
-        for band in BANDS:
-            band_arr = imread(INPUT_IMAGES_DIRECTORY / f"{chip_id}/{band}.tif")
-            band_arrs.append(band_arr)
-        chip_arr = np.stack(band_arrs)
-        pr_mask = ensemble.predict(chip_arr)
+    # Get forecast from the system of several neural networks
+    prediction = ensemble.predict(chip_arr)
 
-        import matplotlib.pyplot as plt
-
-        plt.imshow(pr_mask)
-        plt.show()
+    output_path = PREDICTIONS_DIRECTORY / f"{chip_id}.tif"
+    imsave(output_path, prediction)

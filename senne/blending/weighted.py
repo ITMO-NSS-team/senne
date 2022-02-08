@@ -175,9 +175,6 @@ class WeightedEnsemble(AbstractEnsemble):
                 # Calculated metric
                 iou_metric = smp.utils.metrics.IoU()
                 calculated_metric = iou_metric.forward(pr_mask, actual_mask)
-                if float(calculated_metric) == 0:
-                    print('Error metric')
-                    calculated_metric = 1.0
                 metrics.append(-float(calculated_metric))
 
             metrics = np.array(metrics)
@@ -230,9 +227,6 @@ class WeightedEnsemble(AbstractEnsemble):
                 # Calculated metric
                 iou_metric = smp.utils.metrics.IoU()
                 calculated_metric = iou_metric.forward(pr_mask, actual_mask)
-                if float(calculated_metric) == 0:
-                    print('Error metric')
-                    calculated_metric = 1.0
                 metrics.append(-float(calculated_metric))
 
             metrics = np.array(metrics)

@@ -3,7 +3,7 @@ from senne.senne import Ensembler
 
 if __name__ == '__main__':
     # An example of how to launch ensembling algorithm for already trained neural networks
-    ensembler = Ensembler(path='D:/ITMO/sub/serialized', device='cuda',
+    ensembler = Ensembler(path='../serialized', device='cuda',
                           metadata_path=None)
 
     # Create an ensemble

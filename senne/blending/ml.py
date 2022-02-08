@@ -1,6 +1,5 @@
 import os
 import pickle
-import timeit
 
 import pandas as pd
 import numpy as np
@@ -119,12 +118,9 @@ class MLEnsemble(AbstractEnsemble):
         if self.use_shift:
             features_for_predict = create_shifted_features(features_for_predict, for_predict=True)
 
-        start = timeit.default_timer()
         predicted = self.ensemble_model.predict(features_for_predict.values)
         predicted = predicted.reshape(n_rows, n_cols)
         predicted = predicted.astype(np.uint8)
-        print('Predict time', timeit.default_timer() - start)
-
         return predicted
 
     def _prepare_table_dataframe(self, features_matrix: np.array, nn_forecasts: np.array,
@@ -193,7 +189,6 @@ def create_shifted_features(train_dataframe: pd.DataFrame, for_predict: bool = F
 
     For a5 values from a4 and a6 will be used
     """
-    start = timeit.default_timer()
     # TODO change
     matrix_side_size = 512
 
@@ -219,5 +214,4 @@ def create_shifted_features(train_dataframe: pd.DataFrame, for_predict: bool = F
 
     # Take only source features and first neural network prediction
     train_dataframe = pd.concat([neighboring_left_side, neighboring_right_side, train_dataframe], axis=1)
-    print(timeit.default_timer() - start)
     return train_dataframe
