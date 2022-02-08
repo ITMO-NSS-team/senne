@@ -12,13 +12,13 @@ from senne.data.data import DataProcessor
 from senne.senne import load_json_files, torch
 from senne.blending.weighted import WeightedEnsemble
 
-ROOT_DIRECTORY = Path("D:/ITMO/sub")
+ROOT_DIRECTORY = Path("..")
 PREDICTIONS_DIRECTORY = ROOT_DIRECTORY / "predictions"
 SERIALIZED_MODELS_DIR = ROOT_DIRECTORY / "serialized"
 
 BANDS = ["B02", "B03", "B04", "B08"]
 DEVICE = 'cuda'
-test_paths_df = pd.read_csv('../scripts/Calculated_metrics.csv')
+test_paths_df = pd.read_csv('calculated_metrics.csv')
 metadata_path = ROOT_DIRECTORY / "data/test_metadata.csv"
 
 

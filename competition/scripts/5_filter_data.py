@@ -55,8 +55,8 @@ def display_min_max_boundaries():
 
 
 if __name__ == '__main__':
-    # data_path = 'D:/ITMO/senne/competition/data'
-    # save_path = 'D:/filtered_data'
-    # filter_matrices(data_path, save_path)
+    data_path = '../data'
+    save_path = '../filtered_data'
+    filter_matrices(data_path, save_path)
 
     display_min_max_boundaries()

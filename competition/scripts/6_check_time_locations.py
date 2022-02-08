@@ -57,8 +57,8 @@ def update_weights(non_used_locations: list, path_to_json_file: str, common_weig
 
 
 if __name__ == '__main__':
-    metadata_path = 'D:/ITMO/senne/competition/data/train_metadata.csv'
-    df_to_test = 'D:/ITMO/sub/serialized/test.csv'
+    metadata_path = '../data/train_metadata.csv'
+    df_to_test = '../serialized/test.csv'
     non_used_locations = check_time_locations(metadata_path, df_to_test)
 
     # Update non optimized location weights

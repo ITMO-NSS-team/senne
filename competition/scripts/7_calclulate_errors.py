@@ -12,7 +12,7 @@ from senne.data.data import DataProcessor
 from senne.senne import load_json_files, torch
 from senne.blending.weighted import WeightedEnsemble
 
-ROOT_DIRECTORY = Path("D:/ITMO/sub")
+ROOT_DIRECTORY = Path("..")
 PREDICTIONS_DIRECTORY = ROOT_DIRECTORY / "predictions"
 SERIALIZED_MODELS_DIR = ROOT_DIRECTORY / "serialized"
 test_paths = SERIALIZED_MODELS_DIR / "test.csv"
@@ -20,7 +20,7 @@ test_paths = SERIALIZED_MODELS_DIR / "test.csv"
 BANDS = ["B02", "B03", "B04", "B08"]
 DEVICE = 'cuda'
 test_paths_df = pd.read_csv(test_paths)
-metadata_path = ROOT_DIRECTORY / "data/test_metadata.csv"
+metadata_path = ROOT_DIRECTORY / "data/train_metadata.csv"
 
 
 def configure_weighted_model():
@@ -77,7 +77,7 @@ def calculate_for_ensemble_model(loading_function: Callable):
 
     test_paths_df['IoU'] = metrics
     print(f'Calculated IoU metric: {np.mean(np.array(metrics)):.2f}')
-    test_paths_df.to_csv('Calculated_metrics.csv', index=False)
+    test_paths_df.to_csv('calculated_metrics.csv', index=False)
 
 
 if __name__ == '__main__':
